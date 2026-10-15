@@ -1,9 +1,11 @@
 package eu.kanade.tachiyomi.animeextension.es.tiodonghua
 
 import aniyomi.lib.dailymotionextractor.DailymotionExtractor
+import aniyomi.lib.filemoonextractor.FilemoonExtractor
 import aniyomi.lib.okruextractor.OkruExtractor
 import aniyomi.lib.rumbleextractor.RumbleExtractor
 import aniyomi.lib.streamtapeextractor.StreamTapeExtractor
+import aniyomi.lib.universalextractor.UniversalExtractor
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
@@ -131,6 +133,8 @@ class Tiodonghua :
     private val okruExtractor by lazy { OkruExtractor(client) }
     private val rumbleExtractor by lazy { RumbleExtractor(client, headers) }
     private val streamtapeExtractor by lazy { StreamTapeExtractor(client) }
+    private val filemoonExtractor by lazy { FilemoonExtractor(client) }
+    private val universalExtractor by lazy { UniversalExtractor(client) }
 
     private suspend fun extractEmbedVideos(url: String, server: String): List<Video> {
         val prefix = if (server.isBlank()) "" else "$server "
@@ -139,7 +143,8 @@ class Tiodonghua :
             "ok.ru" in url -> okruExtractor.videosFromUrl(url, prefix = prefix)
             "rumble.com" in url -> rumbleExtractor.videosFromUrl(url, prefix = prefix)
             "streamtape.com" in url -> streamtapeExtractor.videoFromUrl(url, "${prefix}StreamTape")?.let(::listOf).orEmpty()
-            else -> emptyList()
+            "filemoon" in url || "moonplayer" in url -> filemoonExtractor.videosFromUrl(url, prefix = prefix)
+            else -> runCatching { universalExtractor.videosFromUrl(url, headers, prefix = prefix) }.getOrDefault(emptyList())
         }
     }
 

@@ -26,6 +26,7 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 class Animejl :
     ParsedAnimeHttpLegacySource(),
@@ -146,7 +147,7 @@ class Animejl :
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
         val params = AnimejlFilters.getSearchParameters(filters)
         return when {
-            query.isNotBlank() -> GET("$baseUrl/animes?q=$query&page=$page")
+            query.isNotBlank() -> GET("$baseUrl/animes?q=${URLEncoder.encode(query, "UTF-8")}&page=$page")
             params.filter.isNotBlank() -> GET("$baseUrl/animes${params.getQuery()}&page=$page")
             else -> popularAnimeRequest(page)
         }

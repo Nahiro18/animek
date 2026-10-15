@@ -3,7 +3,7 @@ ext {
     extClass = '.Tiodonghua'
     themePkg = 'dooplay'
     baseUrl = 'https://tiodonghua.lat'
-    overrideVersionCode = 20
+    overrideVersionCode = 21
 }
 
 apply plugin: "kei.plugins.extension.legacy"
@@ -13,4 +13,6 @@ dependencies {
     implementation(project(':lib:okruextractor'))
     implementation(project(':lib:rumbleextractor'))
     implementation(project(':lib:streamtapeextractor'))
+    implementation(project(':lib:filemoonextractor'))
+    implementation(project(':lib:universalextractor'))
 }

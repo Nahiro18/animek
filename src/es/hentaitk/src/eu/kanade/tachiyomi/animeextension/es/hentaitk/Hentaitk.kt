@@ -26,6 +26,7 @@ import keiyoushi.utils.getPreferencesLazy
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 class Hentaitk :
     AnimeHttpLegacySource(),
@@ -96,7 +97,7 @@ class Hentaitk :
         val tagFilter = filterList.find { it is TagFilter } as TagFilter
 
         return when {
-            query.isNotBlank() -> GET("$baseUrl/page/$page/?s=$query", headers)
+            query.isNotBlank() -> GET("$baseUrl/page/$page/?s=${URLEncoder.encode(query, "UTF-8")}", headers)
             tagFilter.state != 0 -> GET("$baseUrl/${tagFilter.toUriPart()}page/$page/", headers)
             typeFilter.state != 0 -> GET("$baseUrl/${typeFilter.toUriPart()}page/$page/", headers)
             else -> popularAnimeRequest(page)

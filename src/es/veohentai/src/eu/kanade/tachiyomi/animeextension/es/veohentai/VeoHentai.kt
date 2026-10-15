@@ -49,6 +49,7 @@ open class VeoHentai :
         private val EPISODE_NUMBER_REGEX = """Episodio\s+(\d+(?:\.\d+)?)""".toRegex(RegexOption.IGNORE_CASE)
         private val EMBED_URL_REGEX = """https?://hentaiplayer\.com/v/[^"'\s\\]+""".toRegex()
         private val VID_B64_REGEX = """"vid"\s*:\s*"([^"]+)"""".toRegex()
+        private val VIDEO_READY_REGEX = """videoReady\s*=\s*"([^"]+)"""".toRegex()
         private val TRACK_FILE_REGEX = """"file"\s*:\s*"((?:\\.|[^"\\])+\.srt(?:[^"\\])*)"""".toRegex()
     }
 
@@ -169,19 +170,20 @@ open class VeoHentai :
         val playerHeaders = headers.newBuilder().add("Referer", embedUrl).build()
         val playerDoc = client.newCall(GET(playerUrl, playerHeaders)).execute().use { it.asJsoup() }
         val script = playerDoc.select("script").firstOrNull { it.data().contains("window._pV") }?.data()
-            ?: return emptyList()
 
-        val file = VID_B64_REGEX.find(script)?.groupValues?.get(1)
-            ?.let { runCatching { Base64.decode(it, Base64.DEFAULT).toString(Charsets.UTF_8) }.getOrNull() }
-            ?.substringBefore("|")
-            ?.takeIf { it.startsWith("http") }
+        val file = script?.let {
+            VID_B64_REGEX.find(it)?.groupValues?.get(1)
+                ?.let { b64 -> runCatching { Base64.decode(b64, Base64.DEFAULT).toString(Charsets.UTF_8) }.getOrNull() }
+                ?.substringBefore("|")
+                ?.takeIf { url -> url.startsWith("http") }
+        } ?: VIDEO_READY_REGEX.find(playerDoc.html())?.groupValues?.get(1)?.takeIf { it.startsWith("http") }
             ?: return emptyList()
 
         val subtitleUrl = runCatching { playerUrl.toHttpUrl().queryParameter("s") }
             .getOrNull()
             ?.let { runCatching { Base64.decode(it, Base64.DEFAULT).toString(Charsets.UTF_8) }.getOrNull() }
             ?.takeIf { it.startsWith("http") }
-            ?: TRACK_FILE_REGEX.find(script)?.groupValues?.get(1)?.replace("\\/", "/")
+            ?: script?.let { TRACK_FILE_REGEX.find(it)?.groupValues?.get(1)?.replace("\\/", "/") }
 
         val subtitles = listOfNotNull(
             subtitleUrl?.takeIf { it.isNotBlank() }?.let { Track(it, "Español") },

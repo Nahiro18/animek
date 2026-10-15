@@ -25,6 +25,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 class MundoDonghua :
     AnimeHttpLegacySource(),
@@ -133,8 +134,8 @@ class MundoDonghua :
                         }
                     }
                 }
-                if (unpack.contains("vhide_tab")) {
-                    urls.filter { it.contains("vidhide") }.forEach { url ->
+                if (unpack.contains("vhide_tab") || unpack.contains("trigger_vhide") || unpack.contains("vhide")) {
+                    urls.filter { it.contains("vidhide") || it.contains("guccihide") || it.contains("streamhide") || it.contains("streamvid") }.forEach { url ->
                         tasks.add {
                             try {
                                 val newHeaders = headers.newBuilder()
@@ -149,8 +150,8 @@ class MundoDonghua :
                         }
                     }
                 }
-                if (unpack.contains("swish_tab")) {
-                    urls.filter { it.contains("embedwish") }.forEach { url ->
+                if (unpack.contains("swish_tab") || unpack.contains("trigger_swish") || unpack.contains("swish")) {
+                    urls.filter { it.contains("embedwish") || it.contains("wish") }.forEach { url ->
                         tasks.add {
                             try {
                                 val newHeaders = headers.newBuilder()
@@ -195,7 +196,7 @@ class MundoDonghua :
         val genreFilter = filterList.find { it is GenreFilter } as GenreFilter
 
         return when {
-            query.isNotBlank() -> GET("$baseUrl/busquedas/$query")
+            query.isNotBlank() -> GET("$baseUrl/busquedas/${URLEncoder.encode(query.trim(), "UTF-8")}")
             genreFilter.state != 0 -> GET("$baseUrl/genero/${java.net.URLEncoder.encode(genreFilter.toUriPart(), "UTF-8")}")
             else -> popularAnimeRequest(page)
         }

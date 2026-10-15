@@ -31,6 +31,7 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.injectLazy
+import java.net.URLEncoder
 
 class AnimeFlv :
     ParsedAnimeHttpLegacySource(),
@@ -146,7 +147,7 @@ class AnimeFlv :
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
         val params = AnimeFlvFilters.getSearchParameters(filters)
         return when {
-            query.isNotBlank() -> GET("$baseUrl/animes?buscar=$query&pag=$page", headers)
+            query.isNotBlank() -> GET("$baseUrl/animes?buscar=${URLEncoder.encode(query, "UTF-8")}&pag=$page", headers)
             params.filter.isNotBlank() -> GET("$baseUrl/animes${params.getQuery()}&pag=$page", headers)
             else -> popularAnimeRequest(page)
         }

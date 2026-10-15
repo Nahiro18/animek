@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.animeextension.es.hentaila
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import aniyomi.lib.burstcloudextractor.BurstCloudExtractor
+import aniyomi.lib.megaextractor.MegaExtractor
 import aniyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import aniyomi.lib.sendvidextractor.SendvidExtractor
 import aniyomi.lib.streamwishextractor.StreamWishExtractor
@@ -15,7 +16,6 @@ import eu.kanade.tachiyomi.animeextension.es.hentaila.extractors.MediaFireExtrac
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
-import eu.kanade.tachiyomi.animesource.model.AnimeUpdateStrategy
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
@@ -165,7 +165,6 @@ class Hentaila :
                         animeId?.let {
                             thumbnail_url = "$CDN_BASE_URL/covers/$it.jpg"
                         }
-                        update_strategy = AnimeUpdateStrategy.ONLY_FETCH_ONCE
                     }
                 }
 
@@ -190,7 +189,7 @@ class Hentaila :
             thumbnail_url = document.selectFirst("img.object-cover.w-full.aspect-poster")?.attr("src")
             title = document.selectFirst(".grid.items-start h1.text-lead")?.text()!!
             description = document.select(".entry.text-lead.text-sm p").text()
-            genre = document.select(".flex-wrap.items-center .btn.btn-xs.rounded-full:not(.sm\\:w-auto)")
+            genre = document.select("a[href*='catalogo?genre=']")
                 .joinToString { it.text() }
             status = currentStatus
         }
@@ -227,6 +226,7 @@ class Hentaila :
     private val burstCloudExtractor by lazy { BurstCloudExtractor(client) }
     private val sendvidExtractor by lazy { SendvidExtractor(client, headers) }
     private val mediaFireExtractor by lazy { MediaFireExtractor(client) }
+    private val megaExtractor by lazy { MegaExtractor(client, headers) }
     private val fireLoadExtractor by lazy { FireLoadExtractor(client) }
     private val vidhideExtractor by lazy { VidHideExtractor(client, headers) }
     private val universalExtractor by lazy { UniversalExtractor(client) }
@@ -296,6 +296,10 @@ class Hentaila :
                         "sendvid" -> sendvidExtractor.videosFromUrl(each.url)
 
                         "mediafire" -> mediaFireExtractor.getVideoFromUrl(each.url)
+
+                        "mega" -> megaExtractor.videosFromUrl(each.url, prefix = "Mega")
+
+                        "netu", "hqq" -> universalExtractor.videosFromUrl(each.url, headers, prefix = "Netu")
 
                         "fireload" -> fireLoadExtractor.getVideoFromUrl(each.url)
 

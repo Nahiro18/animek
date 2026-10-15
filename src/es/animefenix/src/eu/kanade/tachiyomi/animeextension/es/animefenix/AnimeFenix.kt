@@ -16,6 +16,7 @@ import keiyoushi.utils.parallelCatchingFlatMapBlocking
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 class AnimeFenix : AnimeHttpLegacySource() {
 
@@ -64,7 +65,7 @@ class AnimeFenix : AnimeHttpLegacySource() {
         val filterList = if (filters.isEmpty()) getFilterList() else filters
         val genre = filterList.filterIsInstance<AnimeFenixFilters.UriPartFilter>().firstOrNull()?.toUriPart().orEmpty()
         return when {
-            query.isNotBlank() -> GET("$baseUrl/directorio?q=$query&page=$page", headers)
+            query.isNotBlank() -> GET("$baseUrl/directorio?q=${URLEncoder.encode(query, "UTF-8")}&page=$page", headers)
             genre.isNotBlank() -> GET("$baseUrl/genero/$genre?page=$page", headers)
             else -> popularAnimeRequest(page)
         }

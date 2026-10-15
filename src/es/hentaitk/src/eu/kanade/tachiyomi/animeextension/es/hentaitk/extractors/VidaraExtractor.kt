@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.animeextension.es.hentaitk.extractors
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.network.POST
 import keiyoushi.utils.parseAs
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import okhttp3.Headers
 import okhttp3.MediaType.Companion.toMediaType
@@ -25,5 +26,5 @@ class VidaraExtractor(private val client: OkHttpClient) {
     }
 
     @Serializable
-    class VidaraResponse(val streamingUrl: String? = null)
+    class VidaraResponse(@SerialName("streaming_url") val streamingUrl: String? = null)
 }

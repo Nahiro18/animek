@@ -31,6 +31,7 @@ import okhttp3.FormBody
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 class MonosChinos :
     AnimeHttpLegacySource(),
@@ -99,7 +100,7 @@ class MonosChinos :
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
         val params = Filters.getSearchParameters(filters)
         return when {
-            query.isNotBlank() -> GET("$baseUrl/buscar?q=$query&p=$page", headers)
+            query.isNotBlank() -> GET("$baseUrl/buscar?q=${URLEncoder.encode(query, "UTF-8")}&p=$page", headers)
             params.filter.isNotBlank() -> GET("$baseUrl/animes${params.getQuery()}&p=$page", headers)
             else -> popularAnimeRequest(page)
         }
@@ -270,7 +271,7 @@ class MonosChinos :
         "mp4upload" to listOf("mp4upload"),
         "streamwish" to listOf("wishembed", "streamwish", "strwish", "wish", "kswplayer", "swhoi", "multimovies", "uqloads", "neko-stream", "swdyu", "iplayerhls", "streamgg"),
         "doodstream" to listOf("doodstream", "dood.", "ds2play", "doods.", "ds2video", "dooood", "d000d", "d0000d"),
-        "mixdrop" to listOf("mixdrop"),
+        "mixdrop" to listOf("mixdrop", "mxdrop"),
         "streamtape" to listOf("streamtape", "stp", "stape", "shavetape"),
         "lulu" to listOf("luluvdo", "lulu", "lulustream"),
         "yourupload" to listOf("yourupload", "upload", "vidcache"),
@@ -291,6 +292,7 @@ class MonosChinos :
         val effectiveMatched = matched ?: when {
             serverKey.contains("dood") -> "doodstream"
             serverKey.contains("filemoon") -> "filemoon"
+            serverKey.contains("mxdrop") || serverKey.contains("mixdrop") -> "mixdrop"
             serverKey.contains("lulu") -> "lulu"
             else -> null
         }
