@@ -176,6 +176,8 @@ jobs:
   publish:
     name: Publish extension repo
     needs: [prepare, build]
+    permissions:
+      contents: write
     if: >-
       !cancelled()
       && needs.prepare.result == 'success'
