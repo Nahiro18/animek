@@ -6,6 +6,7 @@ import aniyomi.lib.okruextractor.OkruExtractor
 import aniyomi.lib.rumbleextractor.RumbleExtractor
 import aniyomi.lib.streamtapeextractor.StreamTapeExtractor
 import aniyomi.lib.universalextractor.UniversalExtractor
+import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
@@ -22,6 +23,7 @@ import okhttp3.FormBody
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -37,6 +39,11 @@ class Tiodonghua :
     override fun popularAnimeSelector() = "#archive-content article"
 
     override fun popularAnimeNextPageSelector() = "div.resppages > a > span.fa-chevron-right"
+
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
+        if (query.isBlank()) return super.searchAnimeRequest(page, query, filters)
+        return GET("$baseUrl/page/$page/?s=${URLEncoder.encode(query, "UTF-8")}", headers)
+    }
 
     override fun popularAnimeFromElement(element: Element): SAnime = SAnime.create().apply {
         setUrlWithoutDomain(element.selectFirst("a[href]")?.attr("href").orEmpty())
