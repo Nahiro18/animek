@@ -116,7 +116,7 @@ class Tiodonghua :
                 .awaitSuccess()
                 .bodyString()
                 .parseAs<PlayerResponse>()
-                .let(::extractIframeSrc)
+                .let { extractIframeSrc(it.embed_url) }
         }.getOrNull()
     }
 

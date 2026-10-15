@@ -90,9 +90,7 @@ class MonosChinos :
 
     // ====================== ÚLTIMOS EPISODIOS ======================
 
-    override fun latestUpdatesRequest(page: Int): Request {
-        return GET("$baseUrl/emision?p=$page", headers)
-    }
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/emision?p=$page", headers)
 
     override fun latestUpdatesParse(response: Response) = popularAnimeParse(response)
 

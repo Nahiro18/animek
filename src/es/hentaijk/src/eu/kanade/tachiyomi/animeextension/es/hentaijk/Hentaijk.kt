@@ -104,9 +104,7 @@ class Hentaijk :
 
     override fun latestUpdatesNextPageSelector(): String? = null
 
-    override fun latestUpdatesParse(response: Response): AnimesPage {
-        return response.bodyString().toAnimePage()
-    }
+    override fun latestUpdatesParse(response: Response): AnimesPage = response.bodyString().toAnimePage()
 
     private fun String.toAnimePage(): AnimesPage {
         val raw = substringAfter("var animes = ").substringBefore("};") + "}"
@@ -145,15 +143,13 @@ class Hentaijk :
 
     override fun searchAnimeNextPageSelector(): String = "ul.pagination a[rel=next]"
 
-    override fun searchAnimeParse(response: Response): AnimesPage {
-        return if (response.request.url.encodedPath.startsWith("/directorio")) {
-            response.bodyString().toAnimePage()
-        } else {
-            val document = response.asJsoup()
-            val animes = document.select(searchAnimeSelector()).map(::searchAnimeFromCard)
-            val hasNextPage = document.selectFirst(searchAnimeNextPageSelector()) != null
-            AnimesPage(animes, hasNextPage)
-        }
+    override fun searchAnimeParse(response: Response): AnimesPage = if (response.request.url.encodedPath.startsWith("/directorio")) {
+        response.bodyString().toAnimePage()
+    } else {
+        val document = response.asJsoup()
+        val animes = document.select(searchAnimeSelector()).map(::searchAnimeFromCard)
+        val hasNextPage = document.selectFirst(searchAnimeNextPageSelector()) != null
+        AnimesPage(animes, hasNextPage)
     }
 
     private fun searchAnimeFromCard(element: Element): SAnime = SAnime.create().apply {
@@ -241,11 +237,9 @@ class Hentaijk :
         }
     }
 
-    private fun formatNumber(number: Double): String =
-        if (number % 1 == 0.0) number.toInt().toString() else number.toString()
+    private fun formatNumber(number: Double): String = if (number % 1 == 0.0) number.toInt().toString() else number.toString()
 
-    private fun String.toDate(): Long =
-        runCatching { DATE_FORMATTER.parse(this)?.time }.getOrNull() ?: 0L
+    private fun String.toDate(): Long = runCatching { DATE_FORMATTER.parse(this)?.time }.getOrNull() ?: 0L
 
     override fun episodeListSelector() = throw UnsupportedOperationException()
 
