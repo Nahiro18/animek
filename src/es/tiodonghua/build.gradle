@@ -1,17 +1,16 @@
 ext {
     extName = 'Tiodonghua.com'
     extClass = '.Tiodonghua'
-    themePkg = 'animestream'
-    baseUrl = 'https://anime.tiodonghua.com'
-    overrideVersionCode = 19
+    themePkg = 'dooplay'
+    baseUrl = 'https://tiodonghua.lat'
+    overrideVersionCode = 20
 }
 
 apply plugin: "kei.plugins.extension.legacy"
 
 dependencies {
-
-    implementation(project(":lib:okruextractor"))
-    implementation(project(":lib:mixdropextractor"))
-    implementation(project(":lib:voeextractor"))
-    implementation(project(":lib:youruploadextractor"))
+    implementation(project(':lib:dailymotionextractor'))
+    implementation(project(':lib:okruextractor'))
+    implementation(project(':lib:rumbleextractor'))
+    implementation(project(':lib:streamtapeextractor'))
 }

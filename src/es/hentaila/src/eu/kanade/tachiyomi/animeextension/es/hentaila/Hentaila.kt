@@ -107,7 +107,7 @@ class Hentaila :
                 when (filter) {
                     is GenreFilter -> urlBuilder.addQueryParameter("genre", filter.toUriPart())
 
-                    is OrderFilter -> urlBuilder.addQueryParameter("filter", filter.toUriPart())
+                    is OrderFilter -> urlBuilder.addQueryParameter("order", filter.toUriPart())
 
                     is StatusOngoingFilter -> if (filter.state) {
                         urlBuilder.addQueryParameter("status", "emision")

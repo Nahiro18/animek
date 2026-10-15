@@ -14,6 +14,7 @@ import aniyomi.lib.streamwishextractor.StreamWishExtractor
 import aniyomi.lib.universalextractor.UniversalExtractor
 import aniyomi.lib.uqloadextractor.UqloadExtractor
 import aniyomi.lib.voeextractor.VoeExtractor
+import aniyomi.lib.youruploadextractor.YourUploadExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
@@ -75,11 +76,11 @@ class MonosChinos :
 
     override fun popularAnimeParse(response: Response): AnimesPage {
         val document = response.asJsoup()
-        val elements = document.select("li.ficha_efecto a")
-        val nextPage = document.selectFirst(".pagination a:has(span:containsOwn(»))") != null
+        val elements = document.select("article a.card-wrap")
+        val nextPage = document.select("nav[aria-label=Paginación] li").lastOrNull()?.selectFirst("a") != null
         val animeList = elements.mapNotNull { element ->
             SAnime.create().apply {
-                title = element.selectFirst("h3")?.text() ?: return@mapNotNull null
+                title = element.selectFirst("h3.card-title")?.text() ?: element.selectFirst("h3")?.text() ?: return@mapNotNull null
                 thumbnail_url = element.selectFirst("img")?.getImageUrl()
                 setUrlWithoutDomain(element.attr("abs:href"))
             }
@@ -90,35 +91,10 @@ class MonosChinos :
     // ====================== ÚLTIMOS EPISODIOS ======================
 
     override fun latestUpdatesRequest(page: Int): Request {
-        val url = if (page == 1) baseUrl else "$baseUrl?page=$page"
-        return GET(url, headers)
+        return GET("$baseUrl/emision?p=$page", headers)
     }
 
-    override fun latestUpdatesParse(response: Response): AnimesPage {
-        val document = response.asJsoup()
-        val episodeItems = document.select("ul.row.row-cols-xl-4.row-cols-lg-4.row-cols-md-3.row-cols-2 > li.col.mb-4")
-        val animeList = episodeItems.mapNotNull { item ->
-            val episodeLink = item.selectFirst("a") ?: return@mapNotNull null
-            val episodeUrl = episodeLink.attr("abs:href")
-
-            val episodeSlug = episodeUrl.substringAfter("/ver/").substringBefore("?")
-            val animeSlugBase = episodeSlug.replace(EPISODE_SLUG_REGEX, "")
-            val animeUrl = "/anime/$animeSlugBase-sub-espanol"
-
-            val animeTitle = item.selectFirst("h2.fs-5")?.text() ?: return@mapNotNull null
-            val genre = item.selectFirst("span.text-muted")?.text() ?: ""
-
-            SAnime.create().apply {
-                title = animeTitle
-                setUrlWithoutDomain(animeUrl)
-                description = genre
-                thumbnail_url = item.selectFirst("img.lazy")?.getImageUrl()
-            }
-        }
-
-        val nextPage = document.selectFirst(".pagination a:has(span:containsOwn(»))") != null
-        return AnimesPage(animeList, nextPage)
-    }
+    override fun latestUpdatesParse(response: Response) = popularAnimeParse(response)
 
     // ====================== BÚSQUEDA ======================
 
@@ -138,12 +114,15 @@ class MonosChinos :
     override fun animeDetailsParse(response: Response): SAnime {
         val document = response.asJsoup()
         return SAnime.create().apply {
-            title = document.selectFirst("h1.fs-2.text-capitalize.text-light")?.text() ?: ""
-            description = document.selectFirst("#profile-tab-pane .mb-3 p")?.text()
-            genre = document.select("#profile-tab-pane .badge.bg-secondary").joinToString { it.text() }
+            title = document.selectFirst("h1")?.text() ?: ""
+            description = document.selectFirst("p[class*=text-white/75]")?.text()
+                ?: document.selectFirst("#profile-tab-pane .mb-3 p")?.text()
+            genre = document.select("a[href*='/genero/']").joinToString { it.text() }
             thumbnail_url = document.selectFirst(".d-none.d-sm-flex img.lazy")?.getImageUrl()
+                ?: document.selectFirst("img.lazy")?.getImageUrl()
             status = run {
-                val estadoElement = document.selectFirst(".col:has(.text-muted:contains(Estado)) div.ms-2 div:last-child")
+                val estadoElement = document.selectFirst("dt:contains(Estado) + dd")
+                    ?: document.selectFirst(".col:has(.text-muted:contains(Estado)) div.ms-2 div:last-child")
                 when (estadoElement?.text()) {
                     "Estreno", "En emisión" -> SAnime.ONGOING
                     "Finalizado" -> SAnime.COMPLETED
@@ -165,7 +144,7 @@ class MonosChinos :
 
         val csrfToken = document.selectFirst("meta[name='csrf-token']")?.attr("content") ?: ""
 
-        val episodeSlug = document.selectFirst("a[href^='/ver/']")?.attr("href")
+        val episodeSlug = document.selectFirst("a[href*='/ver/']")?.attr("href")
             ?.substringAfter("/ver/")
             ?.substringBefore("-episodio-")
             ?: run {
@@ -175,6 +154,7 @@ class MonosChinos :
         if (episodeSlug.isBlank()) return emptyList()
 
         val episodes = mutableListOf<SEpisode>()
+        val seenNums = mutableSetOf<Float>()
         var currentPage = 1
         var hasMore = true
         val maxPages = 200
@@ -204,12 +184,14 @@ class MonosChinos :
             } catch (_: Exception) {
                 break
             }
+            val beforeCount = seenNums.size
 
             for (obj in json.eps) {
                 val numStr = obj.num.toString()
                 if (numStr.isBlank()) continue
 
                 val episodeNumber = numStr.toFloatOrNull() ?: continue
+                if (!seenNums.add(episodeNumber)) continue
 
                 val urlNumber = if (episodeNumber % 1 == 0f) {
                     episodeNumber.toInt().toString()
@@ -231,8 +213,9 @@ class MonosChinos :
             }
 
             val perpage = json.perpage?.toInt() ?: 0
+            val added = seenNums.size - beforeCount
 
-            if (perpage == 0 || json.eps.size < perpage) {
+            if (perpage == 0 || json.eps.isEmpty() || added == 0) {
                 hasMore = false
             } else {
                 currentPage++
@@ -278,6 +261,7 @@ class MonosChinos :
     private val okruExtractor by lazy { OkruExtractor(client) }
     private val mp4uploadExtractor by lazy { Mp4uploadExtractor(client) }
     private val luluExtractor by lazy { LuluExtractor(client, headers) }
+    private val yourUploadExtractor by lazy { YourUploadExtractor(client) }
     private val universalExtractor by lazy { UniversalExtractor(client) }
 
     private val conventions = listOf(
@@ -291,6 +275,7 @@ class MonosChinos :
         "mixdrop" to listOf("mixdrop"),
         "streamtape" to listOf("streamtape", "stp", "stape", "shavetape"),
         "lulu" to listOf("luluvdo", "lulu", "lulustream"),
+        "yourupload" to listOf("yourupload", "upload", "vidcache"),
     )
 
     private suspend fun serverVideoResolver(url: String, serverName: String = ""): List<Video> {
@@ -323,6 +308,7 @@ class MonosChinos :
             "mixdrop" -> mixdropExtractor.videosFromUrl(url)
             "streamtape" -> streamTapeExtractor.videosFromUrl(url)
             "lulu" -> luluExtractor.videosFromUrl(url, prefix = "LuluStream:")
+            "yourupload" -> yourUploadExtractor.videoFromUrl(url, headers = headers)
             else -> universalExtractor.videosFromUrl(url, headers)
         }
     }

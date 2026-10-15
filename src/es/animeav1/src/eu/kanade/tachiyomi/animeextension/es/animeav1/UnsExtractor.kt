@@ -49,6 +49,7 @@ class UnsExtractor(private val client: OkHttpClient, private val headers: Header
         val paths = mapOf(
             "Cloudflare" to cloudflarePath,
             "Google" to streams.hlsVideoGoogle,
+            "Tiktok" to (streams.hlsVideoTiktok ?: streams.hlsVideoGoogle),
             "In-House" to streams.source,
         )
 
@@ -92,6 +93,7 @@ class UnsExtractor(private val client: OkHttpClient, private val headers: Header
     @Serializable
     class UnsStreams(
         val hlsVideoGoogle: String? = null,
+        val hlsVideoTiktok: String? = null,
         val cf: String? = null,
         val cfNative: String? = null,
         val source: String? = null,

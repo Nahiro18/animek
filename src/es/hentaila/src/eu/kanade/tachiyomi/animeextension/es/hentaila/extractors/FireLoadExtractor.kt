@@ -12,7 +12,7 @@ class FireLoadExtractor(
     suspend fun getVideoFromUrl(url: String): List<Video> {
         val document = client.newCall(GET(url)).awaitSuccess().useAsJsoup()
         val downloadLinkScript = document.selectFirst("script:contains(\"dlink\")")?.data()
-        val downloadUrl = downloadLinkScript?.substringAfter("dlink\" : \"")?.substringBefore("\",")
+        val downloadUrl = downloadLinkScript?.substringAfter("\"dlink\": \"")?.substringBefore("\",")
         if (downloadUrl != null) {
             return listOf(Video(downloadUrl, "FireLoad", downloadUrl))
         }

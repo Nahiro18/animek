@@ -3,7 +3,6 @@ package eu.kanade.tachiyomi.animeextension.es.mundodonghua
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import aniyomi.lib.filemoonextractor.FilemoonExtractor
-import aniyomi.lib.playlistutils.PlaylistUtils
 import aniyomi.lib.streamwishextractor.StreamWishExtractor
 import aniyomi.lib.vidhideextractor.VidHideExtractor
 import aniyomi.lib.voeextractor.VoeExtractor
@@ -51,7 +50,7 @@ class MundoDonghua :
         thumbnail_url = element.selectFirst("div.md-card-img img")?.attr("abs:src")
     }
 
-    private fun popularAnimeNextPageSelector() = "nav.md-pagination > a:last-of-type"
+    private fun popularAnimeNextPageSelector() = "nav.md-pagination > a:last-child"
 
     private fun latestUpdatesNextPageSelector() = popularAnimeNextPageSelector()
 
@@ -118,7 +117,7 @@ class MundoDonghua :
                         }
                     }
                 }
-                if (unpack.contains("fmoon_tab")) {
+                if (unpack.contains("fmoon_tab") || unpack.contains("fmoon_play") || unpack.contains("trigger_fmoon")) {
                     urls.forEach { url ->
                         tasks.add {
                             try {
@@ -165,23 +164,6 @@ class MundoDonghua :
                         }
                     }
                 }
-                if (unpack.contains("asura_tab")) {
-                    urls.filter { it.contains("redirector") }.forEach { url ->
-                        tasks.add {
-                            try {
-                                val newHeaders = headers.newBuilder()
-                                    .add("authority", "www.mdnemonicplayer.xyz")
-                                    .add("accept", "*/*")
-                                    .add("Origin", baseUrl)
-                                    .add("referer", "$baseUrl/")
-                                    .build()
-                                PlaylistUtils(client, newHeaders).extractFromHls(url, videoNameGen = { "Asura:$it" })
-                            } catch (_: Exception) {
-                                emptyList()
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -214,7 +196,7 @@ class MundoDonghua :
 
         return when {
             query.isNotBlank() -> GET("$baseUrl/busquedas/$query")
-            genreFilter.state != 0 -> GET("$baseUrl/genero/${genreFilter.toUriPart()}")
+            genreFilter.state != 0 -> GET("$baseUrl/genero/${java.net.URLEncoder.encode(genreFilter.toUriPart(), "UTF-8")}")
             else -> popularAnimeRequest(page)
         }
     }

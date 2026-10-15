@@ -10,6 +10,7 @@ import aniyomi.lib.universalextractor.UniversalExtractor
 import aniyomi.lib.vidhideextractor.VidHideExtractor
 import aniyomi.lib.voeextractor.VoeExtractor
 import aniyomi.lib.youruploadextractor.YourUploadExtractor
+import eu.kanade.tachiyomi.animeextension.es.hentaitk.extractors.VidaraExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -62,7 +63,7 @@ class Hentaitk :
         val animeDetails = SAnime.create().apply {
             title = document.selectFirst(".video-info h1")?.text() ?: ""
             status = SAnime.UNKNOWN
-            description = document.selectFirst(".video-details .post-entry p:not([style])")?.text()
+            description = document.select(".video-details .post-entry p").lastOrNull { it.text().isNotBlank() && it.select("a.fasc-button").isEmpty() }?.text()
             genre = document.select(".video-details .meta a").joinToString { it.text() }
             thumbnail_url = document.selectFirst("meta[property=og:image]")?.attr("content")
         }
@@ -139,11 +140,15 @@ class Hentaitk :
     private val vidHideExtractor by lazy { VidHideExtractor(client, headers) }
     private val doodExtractor by lazy { DoodExtractor(client) }
     private val streamTapeExtractor by lazy { StreamTapeExtractor(client) }
+    private val vidaraExtractor by lazy { VidaraExtractor(client) }
     private val universalExtractor by lazy { UniversalExtractor(client) }
 
     private suspend fun serverVideoResolver(url: String): List<Video> {
         val embedUrl = url.lowercase()
         return when {
+            embedUrl.contains("vidara") || embedUrl.contains("gosbagotui")
+            -> vidaraExtractor.videosFromUrl(url)
+
             embedUrl.contains("ok.ru") || embedUrl.contains("okru")
             -> okruExtractor.videosFromUrl(url)
 
@@ -178,7 +183,15 @@ class Hentaitk :
 
     private fun getImageLink(element: Element?): String? {
         element ?: return null
-        return if (element.hasAttr("srcset")) {
+        return if (element.hasAttr("data-srcset")) {
+            val imageLinks = element.attr("data-srcset")
+                .split(", ")
+                .map { it.split(" ") }
+                .map { it[0] to it[1].removeSuffix("w").toInt() }
+            imageLinks.maxByOrNull { it.second }?.first
+        } else if (element.hasAttr("data-src")) {
+            element.attr("data-src")
+        } else if (element.hasAttr("srcset")) {
             val imageLinks = element.attr("srcset")
                 .split(", ")
                 .map { it.split(" ") }

@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.animeextension.es.hentaijk
 
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import aniyomi.lib.okruextractor.OkruExtractor
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -11,17 +10,58 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.util.asJsoup
 import keiyoushi.utils.ParsedAnimeHttpLegacySource
-import keiyoushi.utils.catchingFlatMap
+import keiyoushi.utils.bodyString
 import keiyoushi.utils.getPreferencesLazy
 import keiyoushi.utils.parallelCatchingFlatMapBlocking
+import keiyoushi.utils.parseAs
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import okhttp3.FormBody
+import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
-import org.jsoup.Connection
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.text.SimpleDateFormat
+import java.util.Locale
+
+@Serializable
+data class HentaijkAnime(
+    val title: String = "",
+    val synopsis: String? = null,
+    val image: String? = null,
+    val slug: String? = null,
+    val url: String? = null,
+)
+
+@Serializable
+data class HentaijkAnimePage(
+    @SerialName("current_page") val currentPage: Int = 1,
+    @SerialName("last_page") val lastPage: Int = 1,
+    @SerialName("next_page_url") val nextPageUrl: String? = null,
+    val data: List<HentaijkAnime> = emptyList(),
+)
+
+@Serializable
+data class HentaijkEpisode(
+    val title: String? = null,
+    val number: Double = 0.0,
+    val timestamp: String? = null,
+)
+
+@Serializable
+data class HentaijkEpisodePage(
+    @SerialName("current_page") val currentPage: Int = 1,
+    @SerialName("last_page") val lastPage: Int = 1,
+    @SerialName("next_page_url") val nextPageUrl: String? = null,
+    val data: List<HentaijkEpisode> = emptyList(),
+)
 
 class Hentaijk :
     ParsedAnimeHttpLegacySource(),
@@ -37,81 +77,175 @@ class Hentaijk :
 
     private val preferences by getPreferencesLazy()
 
-    override fun popularAnimeSelector(): String = "div.col-lg-12 div.list"
-
-    override fun popularAnimeRequest(page: Int): Request = GET("https://hentaijk.com/top/")
-
-    override fun popularAnimeFromElement(element: Element): SAnime {
-        val anime = SAnime.create()
-        anime.setUrlWithoutDomain(
-            element.select("div#conb a").attr("href"),
-        )
-        anime.title = element.select("div#conb a").attr("title")
-        anime.thumbnail_url = element.select("div#conb a img").attr("src")
-        anime.description = element.select("div#conb div#animinfo p").text()
-        return anime
+    private val json = Json {
+        isLenient = true
+        ignoreUnknownKeys = true
+        explicitNulls = false
     }
 
-    override fun popularAnimeNextPageSelector(): String = "uwu"
+    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/top/", headers)
+
+    override fun popularAnimeSelector(): String = "div.col.toplist.mb-4"
+
+    override fun popularAnimeFromElement(element: Element): SAnime = SAnime.create().apply {
+        val link = element.selectFirst("a[href]")
+        setUrlWithoutDomain(link?.attr("href").orEmpty())
+        title = element.selectFirst("h5.card-title")?.text().orEmpty()
+        thumbnail_url = element.selectFirst("img.card-img-top")?.attr("src")
+    }
+
+    override fun popularAnimeNextPageSelector(): String = "ul.pagination a[rel=next]"
+
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/directorio/1?p=$page", headers)
+
+    override fun latestUpdatesSelector() = throw UnsupportedOperationException()
+
+    override fun latestUpdatesFromElement(element: Element) = throw UnsupportedOperationException()
+
+    override fun latestUpdatesNextPageSelector(): String? = null
+
+    override fun latestUpdatesParse(response: Response): AnimesPage {
+        return response.bodyString().toAnimePage()
+    }
+
+    private fun String.toAnimePage(): AnimesPage {
+        val raw = substringAfter("var animes = ").substringBefore("};") + "}"
+        val page = raw.parseAs<HentaijkAnimePage>(json)
+        val animes = page.data.map { it.toSAnime() }
+        return AnimesPage(animes, page.currentPage < page.lastPage)
+    }
+
+    private fun HentaijkAnime.toSAnime(): SAnime = SAnime.create().apply {
+        setUrlWithoutDomain(url ?: slug?.let { "$baseUrl/$it/" }.orEmpty())
+        title = this@toSAnime.title
+        thumbnail_url = image
+        description = synopsis
+    }
+
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
+        val filterList = if (filters.isEmpty()) getFilterList() else filters
+        val genreFilter = filterList.find { it is GenreFilter } as GenreFilter
+
+        return when {
+            query.isNotBlank() -> {
+                val url = baseUrl.toHttpUrl().newBuilder().apply {
+                    addPathSegment("buscar")
+                    addQueryParameter("q", query)
+                }.build()
+                GET(url, headers)
+            }
+            genreFilter.state != 0 -> GET("$baseUrl/genero/${genreFilter.toUriPart()}/?p=$page", headers)
+            else -> GET("$baseUrl/directorio/1?p=$page", headers)
+        }
+    }
+
+    override fun searchAnimeSelector(): String = "div.anime__item, div.dir1 div.card"
+
+    override fun searchAnimeFromElement(element: Element): SAnime = searchAnimeFromCard(element)
+
+    override fun searchAnimeNextPageSelector(): String = "ul.pagination a[rel=next]"
+
+    override fun searchAnimeParse(response: Response): AnimesPage {
+        return if (response.request.url.encodedPath.startsWith("/directorio")) {
+            response.bodyString().toAnimePage()
+        } else {
+            val document = response.asJsoup()
+            val animes = document.select(searchAnimeSelector()).map(::searchAnimeFromCard)
+            val hasNextPage = document.selectFirst(searchAnimeNextPageSelector()) != null
+            AnimesPage(animes, hasNextPage)
+        }
+    }
+
+    private fun searchAnimeFromCard(element: Element): SAnime = SAnime.create().apply {
+        if (element.hasClass("anime__item")) {
+            val link = element.selectFirst("div.anime__item__text h5 a")
+            setUrlWithoutDomain(link?.attr("href").orEmpty())
+            title = link?.text().orEmpty()
+            thumbnail_url = element.selectFirst("div.anime__item__pic")?.attr("data-setbg")
+            status = parseStatus(element.selectFirst("div.anime__item__text ul li")?.text().orEmpty())
+            genre = element.select("div.anime__item__text ul li").joinToString { it.text() }
+        } else {
+            val link = element.selectFirst("a[href]")
+            setUrlWithoutDomain(link?.attr("href").orEmpty())
+            title = element.selectFirst("h5.card-title")?.text().orEmpty()
+            thumbnail_url = element.selectFirst("img.card-img-top")?.attr("src")
+            status = parseStatus(element.select("span.badge").joinToString { it.text() })
+        }
+    }
+
+    override fun animeDetailsParse(document: Document): SAnime = SAnime.create().apply {
+        thumbnail_url = document.selectFirst("div.anime_pic img")?.attr("src")
+        title = document.selectFirst("div.anime_info h3")?.text().orEmpty()
+        description = document.selectFirst("div.anime_info p.scroll")?.text()
+        document.select("div.card.anime_data ul li").forEach { item ->
+            val label = item.selectFirst("span")?.text().orEmpty().lowercase()
+            when {
+                "genero" in label -> genre = item.select("a").joinToString { it.text() }
+                "estado" in label -> status = parseStatus(item.text())
+                "studio" in label -> author = item.select("a").text().takeIf { it.isNotBlank() }
+            }
+        }
+    }
+
+    private fun parseStatus(statusString: String): Int {
+        val normalized = statusString.lowercase()
+        return when {
+            "concluido" in normalized || "finalizado" in normalized -> SAnime.COMPLETED
+            "emisi" in normalized || "estren" in normalized -> SAnime.ONGOING
+            else -> SAnime.UNKNOWN
+        }
+    }
 
     override fun episodeListParse(response: Response): List<SEpisode> {
+        val animeUrl = response.request.url.toString().trimEnd('/')
+        val document = response.asJsoup()
+        val animeId = document.selectFirst("div.guardar_anime[data-anime]")
+            ?.attr("data-anime")
+            ?.takeIf { it.isNotBlank() } ?: return emptyList()
+        val token = document.selectFirst("meta[name=csrf-token]")
+            ?.attr("content")
+            ?.takeIf { it.isNotBlank() } ?: return emptyList()
+        val formData = FormBody.Builder().add("_token", token).build()
+        val cookieHeaders = headers.newBuilder().apply {
+            val cookies = response.headers.filter { it.first == "set-cookie" }
+                .joinToString(" ") { "${it.second.substringBefore(";")};" }
+            if (cookies.isNotBlank()) add("Cookie", cookies)
+        }.build()
+
         val episodes = mutableListOf<SEpisode>()
-        val episodeLink = response.request.url
-        val pageBody = response.asJsoup()
-        val scriptText = pageBody.selectFirst("script:containsData(var invertir =)")!!.data()
-        val animeId = scriptText.substringAfter("'/ajax/last_episode/", "")
-            .substringBefore("/',", "")
-            .ifEmpty { throw Exception("no video links found.") }
-
-        val pageNumber = pageBody.select("div.anime__pagination a")
-        val lastPage = pageNumber.last()?.attr("href")
-            ?.replace("#pag", "")
-        val firstPage = pageNumber.first()?.attr("href")
-            ?.replace("#pag", "")
-
-        if (firstPage != lastPage) {
-            var checkLast = 0
-            for (i in 1 until lastPage?.toInt()!!) {
-                for (j in 1..12) {
-                    // Log.i("bruh", (j + checkLast).toString())
-                    val episode = SEpisode.create().apply {
-                        episode_number = (j + checkLast).toFloat()
-                        name = "Episodio ${j + checkLast}"
-                        date_upload = System.currentTimeMillis()
-                    }
-                    episode.setUrlWithoutDomain("$episodeLink/${j + checkLast}")
-                    episodes.add(episode)
-                }
-                checkLast += 12
-            }
-            Jsoup.connect("https://hentaijk.com/ajax/pagination_episodes/$animeId/$lastPage").get()
-                .body().select("body").text().replace("}]", "").split("}").forEach { json ->
-                    val number = json.substringAfter("\"number\":\"").substringBefore("\"")
-                    val episode = SEpisode.create().apply {
-                        episode_number = number.toFloat()
-                        name = "Episodio $number"
-                        date_upload = System.currentTimeMillis()
-                    }
-                    episode.setUrlWithoutDomain("$episodeLink/$number")
-                    episodes.add(episode)
-                }
-        }
-
-        if (firstPage == lastPage) {
-            Jsoup.connect("https://hentaijk.com/ajax/pagination_episodes/$animeId/$lastPage").get()
-                .body().select("body").text().replace("}]", "").split("}").forEach { json ->
-                    val number = json.substringAfter("\"number\":\"").substringBefore("\"")
-                    val episode = SEpisode.create().apply {
-                        episode_number = number.toFloat()
-                        name = "Episodio $number"
-                        date_upload = System.currentTimeMillis()
-                    }
-                    episode.setUrlWithoutDomain("$episodeLink/$number")
-                    episodes.add(episode)
-                }
+        val firstPage = fetchEpisodes(animeId, 1, cookieHeaders, formData)
+        firstPage.data.toEpisodeList(animeUrl).let(episodes::addAll)
+        for (page in 2..firstPage.lastPage) {
+            runCatching { fetchEpisodes(animeId, page, cookieHeaders, formData) }
+                .getOrNull()?.data?.toEpisodeList(animeUrl)?.let(episodes::addAll)
         }
         return episodes.reversed()
     }
+
+    private fun fetchEpisodes(
+        animeId: String,
+        page: Int,
+        cookieHeaders: Headers,
+        formData: FormBody,
+    ): HentaijkEpisodePage = client.newCall(
+        POST("$baseUrl/ajax/episodes/$animeId/$page", headers = cookieHeaders, body = formData),
+    ).execute().parseAs(json)
+
+    private fun List<HentaijkEpisode>.toEpisodeList(animeUrl: String): List<SEpisode> = map { episode ->
+        SEpisode.create().apply {
+            val number = formatNumber(episode.number)
+            setUrlWithoutDomain("$animeUrl/$number")
+            name = episode.title?.takeIf { it.isNotBlank() } ?: "Episodio $number"
+            episode_number = episode.number.toFloat()
+            date_upload = episode.timestamp?.toDate() ?: 0L
+        }
+    }
+
+    private fun formatNumber(number: Double): String =
+        if (number % 1 == 0.0) number.toInt().toString() else number.toString()
+
+    private fun String.toDate(): Long =
+        runCatching { DATE_FORMATTER.parse(this)?.time }.getOrNull() ?: 0L
 
     override fun episodeListSelector() = throw UnsupportedOperationException()
 
@@ -119,73 +253,25 @@ class Hentaijk :
 
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        val episodeLink = response.request.url.toString()
-        return document.select("div.col-lg-12.rounded.bg-servers.text-white.p-3.mt-2 a").parallelCatchingFlatMapBlocking {
-            val server = it.text()
-            val serverId = it.attr("data-id")
-            document.select("script").catchingFlatMap { script ->
-                val videos = mutableListOf<Video>()
-                if (script.data().contains("var video = [];")) {
-                    val url = script.data()
-                        .substringAfter("video[$serverId] = '<iframe class=\"player_conte\" src=\"")
-                        .substringBefore("\"")
-                        .replace("$baseUrl/jkokru.php?u=", "http://ok.ru/videoembed/")
-                        .replace("$baseUrl/jkvmixdrop.php?u=", "https://mixdrop.co/e/")
-                        .replace("$baseUrl/jk.php?u=", "$baseUrl/")
-                    if (url.contains("um2")) {
-                        val doc = Jsoup.connect(url).referrer(episodeLink).get()
-                        val dataKey = doc.select("form input[value]").attr("value")
-                        Jsoup.connect("$baseUrl/gsplay/redirect_post.php").headers(
-                            mapOf(
-                                "Host" to "hentaijk.com",
-                                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                                "Accept-Language" to "en-US,en;q=0.5",
-                                "Referer" to url,
-                                "Content-Type" to "application/x-www-form-urlencoded",
-                                "Origin" to "https://hentaijk.com",
-                                "DNT" to "1",
-                                "Connection" to "keep-alive",
-                                "Upgrade-Insecure-Requests" to "1",
-                                "Sec-Fetch-Dest" to "iframe",
-                                "Sec-Fetch-Mode" to "navigate",
-                                "Sec-Fetch-Site" to "same-origin",
-                                "TE" to "trailers",
-                                "Pragma" to "no-cache",
-                                "Cache-Control" to "no-cache",
-                            ),
-                        ).data(mapOf("data" to dataKey)).method(Connection.Method.POST).followRedirects(false)
-                            .execute().headers("location").forEach { loc ->
-                                val postkey = loc.replace("/gsplay/player.html#", "")
-                                val nozomitext = Jsoup.connect("https://hentaijk.com/gsplay/api.php").method(Connection.Method.POST).data("v", postkey).ignoreContentType(true).execute().body()
-                                nozomitext.split("}").forEach { file ->
-                                    val nozomiUrl = file.substringAfter("\"file\":\"").substringBefore("\"").replace("\\", "")
-                                    if (nozomiUrl.isNotBlank() && !nozomiUrl.contains("{")) {
-                                        Video(nozomiUrl, server, nozomiUrl).let(videos::add)
-                                    }
-                                }
-                            }
-                    }
-
-                    when {
-                        "ok" in url -> OkruExtractor(client).videosFromUrl(url).let(videos::addAll)
-                        "stream/jkmedia" in url -> Video(url, "Xtreme S", url).let(videos::add)
-                        "um.php" in url -> HentaijkExtractor().videoFromUrl(url, server).let(videos::add)
-                    }
-                }
-                videos
+        val iframeById = document.select("script").flatMap { script ->
+            IFRAME_REGEX.findAll(script.data()).mapNotNull { match ->
+                val src = Jsoup.parseBodyFragment(match.groupValues[2])
+                    .selectFirst("iframe[src]")?.attr("src")?.takeIf { it.isNotBlank() }
+                    ?: return@mapNotNull null
+                match.groupValues[1] to src
             }
+        }.toMap()
+        val servers = document.select("a.servers.btn-show").mapNotNull { button ->
+            val src = iframeById[button.attr("data-id")]?.let {
+                if (it.startsWith("/")) baseUrl + it else it
+            } ?: return@mapNotNull null
+            val name = button.text().takeIf { it.isNotBlank() } ?: "Hentaijk"
+            name to src
         }
-    }
-
-    private class HentaijkExtractor {
-        fun videoFromUrl(url: String, server: String): Video {
-            var url1 = ""
-            Jsoup.connect(url).get().body().select("script").forEach {
-                if (it.data().contains("var parts = {")) {
-                    url1 = it.data().substringAfter("url: '").substringBefore("'")
-                }
-            }
-            return Video(url1, server, url1)
+        return servers.parallelCatchingFlatMapBlocking { (name, src) ->
+            val iframe = client.newCall(GET(src, headers)).execute().bodyString()
+            M3U8_REGEX.findAll(iframe).map { it.value }.toList().distinct()
+                .map { Video(it, name, it) }
         }
     }
 
@@ -210,115 +296,6 @@ class Hentaijk :
 
     private fun getNumberFromString(epsStr: String): String = epsStr.filter { it.isDigit() }.ifEmpty { "0" }
 
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        val filterList = if (filters.isEmpty()) getFilterList() else filters
-        val genreFilter = filterList.find { it is GenreFilter } as GenreFilter
-
-        return when {
-            query.isNotBlank() -> GET("$baseUrl/buscar/$query/$page/?filtro=fecha&tipo=none&estado=none&orden=desc", headers)
-            genreFilter.state != 0 -> GET("$baseUrl/genero/${genreFilter.toUriPart()}/$page")
-            else -> GET("$baseUrl/directorio/$page/?filtro=fecha&tipo=none&estado=none&fecha=none&temporada=none&orden=desc")
-        }
-    }
-
-    override fun searchAnimeFromElement(element: Element): SAnime {
-        val anime = SAnime.create()
-        anime.setUrlWithoutDomain(
-            element.select("div.anime__item a").attr("href"),
-        )
-        anime.title = element.select("div.anime__item div#ainfo div.title").text()
-        anime.thumbnail_url = element.select("div.anime__item a div").attr("data-setbg")
-        anime.description = element.select("div.anime__item#ainfo p").text()
-        return anime
-    }
-
-    override fun searchAnimeNextPageSelector(): String = popularAnimeNextPageSelector()
-
-    override fun searchAnimeSelector(): String = ".anime__page__content #botones ~ .row"
-
-    override fun searchAnimeParse(response: Response): AnimesPage {
-        return parseSearchJson(response)
-        // return super.searchAnimeParse(response)
-    }
-
-    private fun parseSearchJson(jsonLine: Response): AnimesPage {
-        val animeList = mutableListOf<SAnime>()
-        val document = jsonLine.asJsoup()
-        val hasNextPage = document.select("section.contenido.spad div.container div.navigation a.nav-next").any()
-        val isSearchLayer = document.select(".col-lg-2.col-md-6.col-sm-6").any()
-        val isFilterLayer = document.select(".card.mb-3.custom_item2").any()
-        if (isSearchLayer) {
-            document.select(".col-lg-2.col-md-6.col-sm-6").forEach { animeData ->
-                val anime = SAnime.create()
-                anime.title = animeData.select("div.anime__item #ainfo div.title").html()
-                anime.thumbnail_url = animeData.select("div.anime__item a div.anime__item__pic").attr("data-setbg")
-                anime.setUrlWithoutDomain(animeData.select("div.anime__item a").attr("href"))
-                anime.status = parseStatus(animeData.select("div.anime__item div.anime__item__text ul li:nth-child(1)").html())
-                val tags = animeData.select("div.anime__item div.anime__item__text ul li").joinToString { it.text() }
-                anime.genre = tags
-                animeList.add(anime)
-            }
-        } else if (isFilterLayer) {
-            document.select(".card.mb-3.custom_item2").forEach { animeData ->
-                val anime = SAnime.create()
-                anime.title = animeData.select("div.row div.col-md-7 div.card-body h5.card-title a").html()
-                anime.thumbnail_url = animeData.select("div.row div.custom_thumb2 a img").attr("src")
-                anime.setUrlWithoutDomain(animeData.select("div.row div.col-md-7 div.card-body h5.card-title a").attr("href"))
-                anime.status = parseStatus(animeData.select("div.row div.col-md-7 div.card-body div.card-info p.card-status").text())
-                val tags = animeData.select("div.row div.col-md-7 div.card-body div.card-info p").joinToString { it.text() }
-                anime.genre = tags
-                anime.description = animeData.select("div.row div.col-md-7 div.card-body p.synopsis").text()
-                animeList.add(anime)
-            }
-        }
-        return AnimesPage(animeList, hasNextPage)
-    }
-
-    override fun animeDetailsParse(document: Document): SAnime {
-        val anime = SAnime.create()
-        anime.thumbnail_url = document.selectFirst("div.col-lg-3 div.anime__details__pic.set-bg")!!.attr("data-setbg")
-        anime.title = document.selectFirst("div.anime__details__text div.anime__details__title h3")!!.text()
-        anime.description = document.selectFirst("div.col-lg-9 div.anime__details__text p")!!.ownText()
-        document.select("div.row div.col-lg-6.col-md-6 ul li").forEach { animeData ->
-            val data = animeData.select("span").text()
-            if (data.contains("Genero")) {
-                anime.genre = animeData.select("a").joinToString { it.text() }
-            }
-            if (data.contains("Estado")) {
-                anime.status = parseStatus(animeData.select("span").text())
-            }
-            if (data.contains("Studios")) {
-                anime.author = animeData.select("a").text()
-            }
-        }
-
-        return anime
-    }
-
-    private fun parseStatus(statusString: String): Int = when {
-        statusString.contains("Por estrenar") -> SAnime.ONGOING
-        statusString.contains("En emision") -> SAnime.ONGOING
-        statusString.contains("Concluido") -> SAnime.COMPLETED
-        else -> SAnime.UNKNOWN
-    }
-
-    override fun latestUpdatesNextPageSelector(): String = "div.container div.navigation a.text.nav-next"
-
-    override fun latestUpdatesFromElement(element: Element): SAnime {
-        val anime = SAnime.create()
-        anime.setUrlWithoutDomain(
-            element.select("div.row.g-0 div.col-md-5.custom_thumb2 a").attr("href"),
-        )
-        anime.title = element.select("div.row.g-0 div.col-md-7 div.card-body h5.card-title a").text()
-        anime.thumbnail_url = element.select("div.row.g-0 div.col-md-5.custom_thumb2 a img").attr("src")
-        anime.description = element.select("div.row.g-0 div.col-md-7 div.card-body p.card-text.synopsis").text()
-        return anime
-    }
-
-    override fun latestUpdatesRequest(page: Int): Request = GET("https://hentaijk.com/directorio/$page/?filtro=fecha&tipo=none&estado=none&fecha=none&temporada=none&orden=desc")
-
-    override fun latestUpdatesSelector(): String = "div.card.mb-3.custom_item2"
-
     override fun getFilterList(): AnimeFilterList = AnimeFilterList(
         AnimeFilter.Header("La busqueda por texto ignora el filtro"),
         GenreFilter(),
@@ -328,93 +305,87 @@ class Hentaijk :
         UriPartFilter(
             "Generos",
             arrayOf(
-                Pair("<selecionar>", "none"),
-                Pair("Español latino", "latino"),
+                Pair("<seleccionar>", "none"),
                 Pair("Accion", "accion"),
-                Pair("Artes Marciales", "artes-marciales"),
-                Pair("Autos", "autos"),
                 Pair("Aventura", "aventura"),
-                Pair("Colegial", "colegial"),
+                Pair("Autos", "autos"),
                 Pair("Comedia", "comedia"),
-                Pair("Cosas de la vida", "cosas-de-la-vida"),
                 Pair("Dementia", "dementia"),
                 Pair("Demonios", "demonios"),
-                Pair("Deportes", "deportes"),
+                Pair("Misterio", "misterio"),
                 Pair("Drama", "drama"),
                 Pair("Ecchi", "ecchi"),
                 Pair("Fantasia", "fantasa"),
-                Pair("Harem", "harem"),
-                Pair("Historico", "historico"),
-                Pair("Josei", "josei"),
                 Pair("Juegos", "juegos"),
-                Pair("Magia", "magia"),
-                Pair("Mecha", "mecha"),
-                Pair("Militar", "militar"),
-                Pair("Misterio", "misterio"),
-                Pair("Musica", "musica"),
-                Pair("Niños", "nios"),
-                Pair("Parodia", "parodia"),
-                Pair("Policial", "policial"),
-                Pair("Psicologico", "psicologico"),
-                Pair("Romance", "romance"),
-                Pair("Samurai", "samurai"),
-                Pair("Sci-fi", "sci-fi"),
-                Pair("Seinen", "seinen"),
-                Pair("Shoujo", "shoujo"),
-                Pair("Shoujo ai", "shoujo-ai"),
-                Pair("Shounen", "shounen"),
-                Pair("Shounen ai", "shounen-ai"),
-                Pair("Sobrenatural", "sobrenatural"),
-                Pair("Space", "space"),
-                Pair("Super poderes", "super-poderes"),
+                Pair("Hentai", "hentai"),
+                Pair("Historico", "historico"),
                 Pair("Terror", "terror"),
-                Pair("Thriller", "thriller"),
-                Pair("Vampiros", "vampiros"),
-                Pair("Yaoi", "yaoi"),
-                Pair("Yuri", "yuri"),
-                Pair("Español latino", "latino"),
-                Pair("Accion", "accion"),
+                Pair("Niños", "nios"),
+                Pair("Magia", "magia"),
                 Pair("Artes Marciales", "artes-marciales"),
-                Pair("Autos", "autos"),
-                Pair("Aventura", "aventura"),
-                Pair("Colegial", "colegial"),
-                Pair("Comedia", "comedia"),
-                Pair("Cosas de la vida", "cosas-de-la-vida"),
-                Pair("Dementia", "dementia"),
-                Pair("Demonios", "demonios"),
-                Pair("Deportes", "deportes"),
-                Pair("Drama", "drama"),
-                Pair("Ecchi", "ecchi"),
-                Pair("Fantasia", "fantasa"),
-                Pair("Harem", "harem"),
-                Pair("Historico", "historico"),
-                Pair("Josei", "josei"),
-                Pair("Juegos", "juegos"),
-                Pair("Magia", "magia"),
                 Pair("Mecha", "mecha"),
-                Pair("Militar", "militar"),
-                Pair("Misterio", "misterio"),
                 Pair("Musica", "musica"),
-                Pair("Niños", "nios"),
                 Pair("Parodia", "parodia"),
-                Pair("Policial", "policial"),
-                Pair("Psicologico", "psicologico"),
-                Pair("Romance", "romance"),
                 Pair("Samurai", "samurai"),
-                Pair("Sci-fi", "sci-fi"),
-                Pair("Seinen", "seinen"),
+                Pair("Romance", "romance"),
+                Pair("Colegial", "colegial"),
+                Pair("Sci-Fi", "sci-fi"),
                 Pair("Shoujo", "shoujo"),
-                Pair("Shoujo ai", "shoujo-ai"),
+                Pair("Shoujo Ai", "shoujo-ai"),
                 Pair("Shounen", "shounen"),
-                Pair("Shounen ai", "shounen-ai"),
-                Pair("Sobrenatural", "sobrenatural"),
+                Pair("Shounen Ai", "shounen-ai"),
                 Pair("Space", "space"),
-                Pair("Super poderes", "super-poderes"),
-                Pair("Terror", "terror"),
-                Pair("Thriller", "thriller"),
+                Pair("Deportes", "deportes"),
+                Pair("Super Poderes", "super-poderes"),
                 Pair("Vampiros", "vampiros"),
                 Pair("Yaoi", "yaoi"),
                 Pair("Yuri", "yuri"),
+                Pair("Harem", "harem"),
+                Pair("Cosas de la vida", "cosas-de-la-vida"),
+                Pair("Sobrenatural", "sobrenatural"),
+                Pair("Militar", "militar"),
+                Pair("Policial", "policial"),
+                Pair("Psicologico", "psicologico"),
+                Pair("Thriller", "thriller"),
+                Pair("Seinen", "seinen"),
+                Pair("Josei", "josei"),
+                Pair("Español Latino", "espaol-latino"),
+                Pair("Escolares", "escolares"),
+                Pair("Orgias", "orgias"),
+                Pair("Virgenes", "virgenes"),
+                Pair("Anal", "anal"),
+                Pair("Maduras", "maduras"),
+                Pair("Ahegao", "ahegao"),
+                Pair("Tetonas", "tetonas"),
+                Pair("Incesto", "incesto"),
+                Pair("Ntr", "ntr"),
+                Pair("Vanilla", "vanilla"),
+                Pair("Violacion", "violacion"),
+                Pair("Hardcore", "hardcore"),
+                Pair("Trio", "trio"),
+                Pair("Cowgirl", "cowgirl"),
+                Pair("Bondage", "bondage"),
+                Pair("Lolis", "lolis"),
+                Pair("Rubias", "rubias"),
+                Pair("Gay", "gay"),
+                Pair("Tentaculos", "tentaculos"),
+                Pair("Monstruos", "monstruos"),
+                Pair("Tsundere", "tsundere"),
+                Pair("Sin Censura", "sin-censura"),
+                Pair("Softcore", "softcore"),
+                Pair("Shota", "shota"),
+                Pair("Ninjas", "ninjas"),
+                Pair("Waifus", "waifus"),
+                Pair("Gordas", "gordas"),
+                Pair("Enfermeras", "enfermeras"),
+                Pair("Paizuri", "paizuri"),
+                Pair("Succubus", "succubus"),
+                Pair("Juegos Sexuales", "juegos-sexuales"),
+                Pair("Netorare", "netorare"),
+                Pair("Petit", "petit"),
+                Pair("Maids", "maids"),
+                Pair("Rape", "rape"),
+                Pair("Gore", "gore"),
             ),
         )
 
@@ -443,5 +414,13 @@ class Hentaijk :
             }
         }
         screen.addPreference(videoQualityPref)
+    }
+
+    companion object {
+        private val IFRAME_REGEX = Regex("""video\[(\d+)]\s*=\s*'([^']*)'""")
+        private val M3U8_REGEX = Regex("""https?://[^'"\s\\]+\.m3u8[^'"\s\\]*""")
+        private val DATE_FORMATTER by lazy {
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
+        }
     }
 }
