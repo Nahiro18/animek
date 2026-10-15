@@ -2364,10 +2364,10 @@
   {
     "name": "Aniyomi: AnimeAv1",
     "pkg": "eu.kanade.tachiyomi.animeextension.es.animeav1",
-    "apk": "aniyomi-es.animeav1-v16.9.apk",
+    "apk": "aniyomi-es.animeav1-v14.10.apk",
     "lang": "es",
-    "code": 9,
-    "version": "16.9",
+    "code": 10,
+    "version": "14.10",
     "nsfw": 0,
     "sources": [
       {
