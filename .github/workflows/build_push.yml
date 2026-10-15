@@ -86,7 +86,7 @@ jobs:
         # If any changes caused by the merge commit, skip this step because versions should already pumped with that merge.
         # But that should be avoided because our own extensions may not be bumped.
       - name: Bump extensions that use a modified lib
-        if: steps.modified-libs.outputs.any_changed == 'true' && steps.set-env.outputs.SKIP_BUMP != 'true' && github.repository == 'yuzono/anime-extensions'
+        if: steps.modified-libs.outputs.any_changed == 'true' && steps.set-env.outputs.SKIP_BUMP != 'true' && github.repository == 'Nahiro18/animek'
         env:
           COMMIT_MESSAGE: ${{ steps.set-env.outputs.LATEST_COMMIT_MESSAGE }}
         run: |
@@ -164,7 +164,7 @@ jobs:
 
       - name: Upload APKs (${{ matrix.chunk.number }})
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: github.repository == 'yuzono/anime-extensions'
+        if: github.repository == 'Nahiro18/animek'
         with:
           name: "individual-apks-${{ matrix.chunk.number }}"
           path: "**/*.apk"
@@ -180,7 +180,7 @@ jobs:
       !cancelled()
       && needs.prepare.result == 'success'
       && (needs.build.result == 'success' || needs.build.result == 'skipped')
-      && github.repository == 'yuzono/anime-extensions'
+      && github.repository == 'Nahiro18/animek'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
