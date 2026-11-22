@@ -10,11 +10,21 @@ Android keeps receiving every extension.
 """
 
 import json
+import os
 import re
 from pathlib import Path
 
 INDEX = Path("index.json")
 OUTPUT = Path("index.anymex.json")
+
+# AnymeX only strips /index.min.json, /index.json and /index.pb when deriving
+# icon/APK paths. Since this file is named index.anymex.json, relative paths
+# would resolve to ".../index.anymex.json/icon/<pkg>.png" (404) and installs
+# would silently fail. Absolute URLs are ignored by Android clients.
+RAW_BASE = os.environ.get(
+    "ANYMEX_RAW_BASE",
+    "https://raw.githubusercontent.com/Nahiro18/animek/repo",
+).rstrip("/")
 
 # Matched against the extension package name (case-insensitive).
 DESKTOP_UNSUPPORTED_PATTERNS = [
@@ -47,6 +57,13 @@ def main() -> None:
     for entry in kept:
         for source in entry.get("sources", []):
             source.pop("versionId", None)
+
+        pkg = entry.get("pkg", "")
+        apk = entry.get("apk", "")
+        if apk:
+            entry["apkUrl"] = f"{RAW_BASE}/apk/{apk}"
+        if pkg:
+            entry["iconUrl"] = f"{RAW_BASE}/icon/{pkg}.png"
 
     with OUTPUT.open("w", encoding="utf-8") as f:
         json.dump(kept, f, ensure_ascii=False, separators=(",", ":"))
