@@ -16,8 +16,13 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Element
 
+private fun isAndroidRuntime(): Boolean = runCatching { Class.forName("android.os.Build") }.isSuccess
+
 abstract class ParsedAnimeHttpLegacySource : ParsedAnimeHttpSource() {
-    override suspend fun getHosterList(episode: SEpisode): List<Hoster> = getVideoList(episode).toHosterList()
+    // See AnimeHttpLegacySource: on AnymeX desktop empty hosters make the
+    // bridge call getVideoList(episode) instead of fetching an empty URL.
+    override suspend fun getHosterList(episode: SEpisode): List<Hoster> =
+        if (isAndroidRuntime()) getVideoList(episode).toHosterList() else emptyList()
 
     override fun hosterListParse(response: Response): List<Hoster> = throw UnsupportedOperationException()
 
