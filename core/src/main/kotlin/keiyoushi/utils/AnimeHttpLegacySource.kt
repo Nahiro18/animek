@@ -17,8 +17,7 @@ abstract class AnimeHttpLegacySource : AnimeHttpSource() {
     // with an empty URL and then tries to fetch that URL, failing with
     // "Expected URL scheme 'http' or 'https'". Returning no hosters there makes
     // the bridge use getVideoList(episode) directly. Android is unchanged.
-    override suspend fun getHosterList(episode: SEpisode): List<Hoster> =
-        if (isAndroidRuntime()) getVideoList(episode).toHosterList() else emptyList()
+    override suspend fun getHosterList(episode: SEpisode): List<Hoster> = if (isAndroidRuntime()) getVideoList(episode).toHosterList() else emptyList()
 
     override fun hosterListParse(response: Response): List<Hoster> = throw UnsupportedOperationException()
 

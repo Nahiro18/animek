@@ -21,8 +21,7 @@ private fun isAndroidRuntime(): Boolean = runCatching { Class.forName("android.o
 abstract class ParsedAnimeHttpLegacySource : ParsedAnimeHttpSource() {
     // See AnimeHttpLegacySource: on AnymeX desktop empty hosters make the
     // bridge call getVideoList(episode) instead of fetching an empty URL.
-    override suspend fun getHosterList(episode: SEpisode): List<Hoster> =
-        if (isAndroidRuntime()) getVideoList(episode).toHosterList() else emptyList()
+    override suspend fun getHosterList(episode: SEpisode): List<Hoster> = if (isAndroidRuntime()) getVideoList(episode).toHosterList() else emptyList()
 
     override fun hosterListParse(response: Response): List<Hoster> = throw UnsupportedOperationException()
 
