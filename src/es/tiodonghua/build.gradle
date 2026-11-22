@@ -3,7 +3,7 @@ ext {
     extClass = '.Tiodonghua'
     themePkg = 'dooplay'
     baseUrl = 'https://tiodonghua.lat'
-    overrideVersionCode = 22
+    overrideVersionCode = 23
 }
 
 apply plugin: "kei.plugins.extension.legacy"
