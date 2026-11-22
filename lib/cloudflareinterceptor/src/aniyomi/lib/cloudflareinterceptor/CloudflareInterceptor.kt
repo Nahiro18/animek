@@ -83,6 +83,14 @@ class CloudflareInterceptor(
             return originalResponse
         }
 
+        // AnymeX's desktop runtime has a no-op WebView stub, so a WebView solve
+        // can never succeed there. Don't block every request waiting for a
+        // challenge that cannot be cleared; Android keeps the original solver.
+        if (!isAndroidRuntime()) {
+            Log.d(TAG, "Skipping WebView Cloudflare solve on non-Android runtime")
+            return originalResponse
+        }
+
         val url = originalRequest.url
         val host = url.host
 
@@ -325,6 +333,8 @@ class CloudflareInterceptor(
 
     companion object {
         private const val TAG = "CloudflareInterceptor"
+
+        private fun isAndroidRuntime(): Boolean = runCatching { Class.forName("android.os.Build") }.isSuccess
 
         private val ERROR_CODES = listOf(403, 503)
         private val SERVER_CHECK = arrayOf("cloudflare-nginx", "cloudflare")
