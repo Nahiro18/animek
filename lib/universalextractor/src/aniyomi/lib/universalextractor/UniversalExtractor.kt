@@ -242,7 +242,7 @@ class UniversalExtractor(private val client: OkHttpClient) {
         }.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
     }.getOrNull()
 
-    private fun isAndroidRuntime(): Boolean = runCatching { Class.forName("android.os.Build") }.isSuccess
+    private fun isAndroidRuntime(): Boolean = runCatching { Class.forName("com.anymex.desktop.AniyomiSourceMethods") }.isFailure
 
     private fun String.proper(): String = this.replaceFirstChar {
         if (it.isLowerCase()) {

@@ -16,7 +16,7 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Element
 
-private fun isAndroidRuntime(): Boolean = runCatching { Class.forName("android.os.Build") }.isSuccess
+private fun isAndroidRuntime(): Boolean = runCatching { Class.forName("com.anymex.desktop.AniyomiSourceMethods") }.isFailure
 
 abstract class ParsedAnimeHttpLegacySource : ParsedAnimeHttpSource() {
     // See AnimeHttpLegacySource: on AnymeX desktop empty hosters make the

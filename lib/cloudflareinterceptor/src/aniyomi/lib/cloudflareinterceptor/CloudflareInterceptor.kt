@@ -334,7 +334,7 @@ class CloudflareInterceptor(
     companion object {
         private const val TAG = "CloudflareInterceptor"
 
-        private fun isAndroidRuntime(): Boolean = runCatching { Class.forName("android.os.Build") }.isSuccess
+        private fun isAndroidRuntime(): Boolean = runCatching { Class.forName("com.anymex.desktop.AniyomiSourceMethods") }.isFailure
 
         private val ERROR_CODES = listOf(403, 503)
         private val SERVER_CHECK = arrayOf("cloudflare-nginx", "cloudflare")

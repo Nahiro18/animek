@@ -10,7 +10,7 @@ import eu.kanade.tachiyomi.network.awaitSuccess
 import okhttp3.Request
 import okhttp3.Response
 
-private fun isAndroidRuntime(): Boolean = runCatching { Class.forName("android.os.Build") }.isSuccess
+private fun isAndroidRuntime(): Boolean = runCatching { Class.forName("com.anymex.desktop.AniyomiSourceMethods") }.isFailure
 
 abstract class AnimeHttpLegacySource : AnimeHttpSource() {
     // On AnymeX desktop the bridge turns already-resolved videos into hosters
