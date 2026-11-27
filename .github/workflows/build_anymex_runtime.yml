@@ -1,0 +1,73 @@
+name: Build patched AnymeX runtime
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: anymex-runtime
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build patched desktop runtime JAR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout animek (patch script)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Checkout AnymeX runtime bridge
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: RyanYuuki/AnymeXExtensionRuntimeBridge
+          ref: main
+          path: bridge
+          persist-credentials: false
+
+      - name: Patch sidecar (add aniyomiGetVideoListStream)
+        run: python3 .github/scripts/patch_anymex_runtime.py bridge
+
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Build shadow JAR
+        working-directory: bridge/RuntimeBridges/Desktop
+        run: gradle shadowJar --no-daemon
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p out
+          cp bridge/RuntimeBridges/Desktop/build/libs/desktop_bridge.jar \
+            out/anymex_desktop_runtime_streamfix.jar
+          ls -lh out/anymex_desktop_runtime_streamfix.jar
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: anymex-desktop-runtime-streamfix
+          path: out/anymex_desktop_runtime_streamfix.jar
+          retention-days: 90
+
+      - name: Publish release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: anymex-runtime-streamfix
+          name: AnymeX runtime (Aniyomi stream fix)
+          body: |
+            Patched desktop sidecar that implements `aniyomiGetVideoListStream`
+            for AnymeX 3.2.1+. Load it in AnymeX via Extension Manager →
+            "Load Plugin JAR from Storage".
+          files: out/anymex_desktop_runtime_streamfix.jar
